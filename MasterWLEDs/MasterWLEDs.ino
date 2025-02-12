@@ -6,15 +6,15 @@
 
 // ------------------------------------------------------------------
 // MASTER:
-//  - Reads 13 local buttons + 11 Slave buttons (via I2C)
+//  - Reads 13 local buttons + 11 Slave inputs over I2C
 //  - Latches exactly 1 location + 1 height at a time
-//  - Toggles Hopper (on/off)
+//  - HOPPER is an actual ON/OFF switch on the Slave (index 0), no toggle logic
 //  - Lights a single NeoPixel strip to show selection
-//  - Sends the corresponding joystick button states
+//  - Sends corresponding joystick states
 //
-// Now modified so that joystick states are only cleared if a *new*
-// button press was detected. If not, the previously latched selection
-// remains pressed without re-clearing.
+// Location + Height are only re-sent if a *new press* is detected.
+//
+// Hopper is updated whenever its switch changes (OFF -> ON or ON -> OFF).
 // ------------------------------------------------------------------
 
 // -------------------- I2C Setup --------------------
@@ -36,124 +36,74 @@ Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    false, false, false);
 
 // -------------------- MASTER Buttons ----------------
-//
-// Indices [0..12]:
-//   idx => pin => LED => type
-//   0 => 10 => 11 => HEIGHT
-//   1 => 12 => 9  => HEIGHT
-//   2 => 13 => 7  => HEIGHT
-//   3 => 5  => 5  => HEIGHT
-//   4 => A0 => 3  => HEIGHT
-//   5 => 9  => 14 => LOCATION
-//   6 => A1 => 0  => LOCATION
-//   7 => 7  => 32 => LOCATION
-//   8 => 8  => 15 => LOCATION
-//   9 => 11 => 17 => LOCATION
-//   10=> 4  => 18 => LOCATION
-//   11=> A2 => 20 => LOCATION
-//   12=> A3 => 21 => LOCATION
+// Indices [0..12], each has: pin, LED index, type (LOCATION/HEIGHT).
+//   0 => pin=10 => LED=11 => HEIGHT
+//   1 => pin=12 => LED=9  => HEIGHT
+//   2 => pin=13 => LED=7  => HEIGHT
+//   3 => pin=5  => LED=5  => HEIGHT
+//   4 => pin=A0 => LED=3  => HEIGHT
+//   5 => pin=9  => LED=14 => LOCATION
+//   6 => pin=A1 => LED=0  => LOCATION
+//   7 => pin=7  => LED=32 => LOCATION
+//   8 => pin=8  => LED=15 => LOCATION
+//   9 => pin=11 => LED=17 => LOCATION
+//   10=> pin=4  => LED=18 => LOCATION
+//   11=> pin=A2 => LED=20 => LOCATION
+//   12=> pin=A3 => LED=21 => LOCATION
 
 const int NUM_MASTER_BUTTONS = 13;
-
 const int masterPins[NUM_MASTER_BUTTONS] = {
-  10, //0
-  12, //1
-  13, //2
-  5,  //3
-  A0, //4
-  9,  //5
-  A1, //6
-  7,  //7
-  8,  //8
-  11, //9
-  4,  //10
-  A2, //11
-  A3  //12
+  10, 12, 13, 5, A0, 9, A1, 7, 8, 11, 4, A2, A3
 };
-
 const int masterLedIndex[NUM_MASTER_BUTTONS] = {
-  11, //0
-  9,  //1
-  7,  //2
-  5,  //3
-  3,  //4
-  14, //5
-  0,  //6
-  32, //7
-  15, //8
-  17, //9
-  18, //10
-  20, //11
-  21  //12
+  11, 9, 7, 5, 3, 14, 0, 32, 15, 17, 18, 20, 21
 };
 
 enum ButtonType {
   LOCATION,
   HEIGHT,
-  HOPPER // not used on Master
+  HOPPER // used only on Slave index 0
 };
 
 ButtonType masterButtonType[NUM_MASTER_BUTTONS] = {
-  HEIGHT,    //0
-  HEIGHT,    //1
-  HEIGHT,    //2
-  HEIGHT,    //3
-  HEIGHT,    //4
-  LOCATION,  //5
-  LOCATION,  //6
-  LOCATION,  //7
-  LOCATION,  //8
-  LOCATION,  //9
-  LOCATION,  //10
-  LOCATION,  //11
-  LOCATION   //12
+  HEIGHT, HEIGHT, HEIGHT, HEIGHT, HEIGHT,   // 0..4
+  LOCATION, LOCATION, LOCATION, LOCATION,   // 5..8
+  LOCATION, LOCATION, LOCATION, LOCATION    // 9..12
 };
 
 // -------------------- SLAVE Buttons -----------------
-//  Indices [0..10]:
-//    0 => Hopper
-//    1 => A2 (height)
-//    2 => A1 (height)
-//    3 => LeftCoral (location)
-//    4 => Barge (location)
-//    5 => H (location)
-//    6 => I (location)
-//    7 => J (location)
-//    8 => K (location)
-//    9 => L (location)
-//    10=> A (location)
+// Indices [0..10]:
+//   0 => Hopper (switch!)
+//   1 => A2 (height)
+//   2 => A1 (height)
+//   3 => LeftCoral (location)
+//   4 => Barge (location)
+//   5 => H (location)
+//   6 => I (location)
+//   7 => J (location)
+//   8 => K (location)
+//   9 => L (location)
+//   10=> A (location)
 
 const int NUM_SLAVE_BUTTONS = 11;
 const int slaveLedIndex[NUM_SLAVE_BUTTONS] = {
-  37, //0 => Hopper
-  41, //1 => A2
-  43, //2 => A1
-  47, //3 => LeftCoral
-  33, //4 => Barge
-  30, //5 => H
-  29, //6 => I
-  27, //7 => J
-  26, //8 => K
-  24, //9 => L
-  23  //10=> A
+  37, 41, 43, 47, 33, 30, 29, 27, 26, 24, 23
 };
-
 ButtonType slaveButtonType[NUM_SLAVE_BUTTONS] = {
-  HOPPER,    //0
-  HEIGHT,    //1
-  HEIGHT,    //2
-  LOCATION,  //3
-  LOCATION,  //4
-  LOCATION,  //5
-  LOCATION,  //6
-  LOCATION,  //7
-  LOCATION,  //8
-  LOCATION,  //9
-  LOCATION   //10
+  HOPPER,   //0
+  HEIGHT,   //1
+  HEIGHT,   //2
+  LOCATION, //3
+  LOCATION, //4
+  LOCATION, //5
+  LOCATION, //6
+  LOCATION, //7
+  LOCATION, //8
+  LOCATION, //9
+  LOCATION  //10
 };
 
-// Joystick button assignment for each Slave button
-// We'll place them after Master 13 => indices 13..23
+// Joystick button assignment for each Slave button (13..23).
 int slaveJoystickIndex[NUM_SLAVE_BUTTONS] = {
   13, //0 => Hopper
   14, //1 => A2
@@ -169,24 +119,27 @@ int slaveJoystickIndex[NUM_SLAVE_BUTTONS] = {
 };
 
 // -------------------- Latch State --------------------
-// Exactly 1 location + 1 height at a time. Hopper toggles independently.
+// 1 location + 1 height latched. Hopper is direct on/off from switch.
+int  selectedLocationMaster = -1;
+int  selectedLocationSlave  = -1;
+int  selectedHeightMaster   = -1;
+int  selectedHeightSlave    = -1;
 
-int selectedLocationMaster = -1; // which Master button index for location
-int selectedLocationSlave  = -1; // which Slave button index for location
-int selectedHeightMaster   = -1; // which Master button index for height
-int selectedHeightSlave    = -1; // which Slave button index for height
-bool hopperSelected        = false; // toggled on/off
+// For the hopper switch:
+bool hopperSelected   = false;  // actual on/off state
 
-// For rising-edge detection
+// For rising-edge detection on location/height:
 bool lastMasterPressed[NUM_MASTER_BUTTONS] = {false};
 bool lastSlavePressed[NUM_SLAVE_BUTTONS]    = {false};
 
+// Keep track of the hopper's last state to detect changes
+bool lastHopperSwitch = false;  
+
 // -------------------- Color Constants --------------------
-// "Deeper" colors if not selected, bright if selected
 #define COLOR_LOC_NOT_PRESSED  0x993333 // deeper red
 #define COLOR_LOC_SELECTED     0xFF0000 // bright red
 
-#define COLOR_HT_NOT_PRESSED   0xFFFFFF // white-ish for unselected
+#define COLOR_HT_NOT_PRESSED   0xFFFFFF // white-ish
 #define COLOR_HT_SELECTED      0x0000FF // bright blue
 
 #define COLOR_HOP_NOT_PRESSED  0x00FF00 // green
@@ -195,7 +148,6 @@ bool lastSlavePressed[NUM_SLAVE_BUTTONS]    = {false};
 // Set one pixel color based on category & selection
 void setButtonColor(int ledIndex, ButtonType btype, bool isSelected) {
   uint32_t color = 0;
-
   switch(btype) {
     case LOCATION:
       color = isSelected ? COLOR_LOC_SELECTED : COLOR_LOC_NOT_PRESSED;
@@ -224,7 +176,7 @@ void setup() {
 
   // NeoPixel
   masterStrip.begin();
-  masterStrip.setBrightness(10); // global brightness (0..255)
+  masterStrip.setBrightness(10); // global brightness
   masterStrip.show();
 
 #ifdef DEBUG_ENABLED
@@ -274,35 +226,42 @@ void loop() {
     slavePressed[i] = ((byte2 & (1 << (i - 8))) != 0);
   }
 
+  // The hopper switch is Slave index 0
+  // "pressed" = true => switch is ON
+  // "not pressed" = false => switch is OFF
+  bool currentHopper = slavePressed[0];
+
   // ----------------------------------------------------------------
-  // 3) Detect "new" presses => update latched selections
+  // 3) Detect "new" presses => update latched selections (LOC/HT)
+  //    Hopper is not toggled - it's a switch. We'll handle it below.
   // ----------------------------------------------------------------
-  bool newPressDetected = false; // We'll track if *anything* was newly pressed
+  bool newPressDetected = false;
 
   // Master
   for (int i = 0; i < NUM_MASTER_BUTTONS; i++) {
     bool now = masterPressed[i];
     bool was = lastMasterPressed[i];
     if (now && !was) {
-      // Rising edge => new press
       newPressDetected = true;
 
       ButtonType btype = masterButtonType[i];
       if (btype == LOCATION) {
-        selectedLocationMaster = i; // override old selection
+        // override old location
+        selectedLocationMaster = i;
         selectedLocationSlave  = -1;
       }
       else if (btype == HEIGHT) {
-        selectedHeightMaster = i; // override old selection
+        // override old height
+        selectedHeightMaster = i;
         selectedHeightSlave  = -1;
       }
-      // no hopper on master
     }
     lastMasterPressed[i] = now;
   }
 
-  // Slave
+  // Slave (for location/height)
   for (int i = 0; i < NUM_SLAVE_BUTTONS; i++) {
+    if (i == 0) continue; // skip hopper index in this loop
     bool now = slavePressed[i];
     bool was = lastSlavePressed[i];
     if (now && !was) {
@@ -317,24 +276,30 @@ void loop() {
         selectedHeightMaster = -1;
         selectedHeightSlave  = i;
       }
-      else if (btype == HOPPER) {
-        // Toggle on/off
-        hopperSelected = !hopperSelected;
-      }
+      // hopper is not toggled here
     }
     lastSlavePressed[i] = now;
   }
 
   // ----------------------------------------------------------------
-  // 4) Update Joystick Buttons
-  //
-  // Only CLEAR the joystick states if a new press was detected!
-  // Otherwise, keep the old states as-is, so the latched selection
-  // remains pressed in the OS.
+  // 4) Detect Hopper switch changes
+  //    If the hopper changed from last loop, we treat that like a
+  //    "new press" so the joystick state is updated.
   // ----------------------------------------------------------------
+  if (currentHopper != lastHopperSwitch) {
+    newPressDetected = true;
+  }
+  hopperSelected   = currentHopper;
+  lastHopperSwitch = currentHopper;
 
+  // ----------------------------------------------------------------
+  // 5) Update Joystick Buttons
+  //
+  // Only CLEAR the joystick states if a new press was detected
+  // or if the hopper state changed. Otherwise keep old states latched.
+  // ----------------------------------------------------------------
   if (newPressDetected) {
-    // 4a) Clear all joystick buttons
+    // 5a) Clear all joystick buttons
     for (int i = 0; i < NUM_MASTER_BUTTONS; i++) {
       Joystick.setButton(i, false);
     }
@@ -342,7 +307,7 @@ void loop() {
       Joystick.setButton(slaveJoystickIndex[i], false);
     }
 
-    // 4b) Assert the new latched states
+    // 5b) Assert latched states
     if (selectedLocationMaster != -1) {
       Joystick.setButton(selectedLocationMaster, true);
     }
@@ -357,48 +322,51 @@ void loop() {
       Joystick.setButton(slaveJoystickIndex[selectedHeightSlave], true);
     }
 
-    // Hopper toggled => slave index 0 => joystick button #13
+    // Hopper switch => joystick button for Slave index 0
     Joystick.setButton(slaveJoystickIndex[0], hopperSelected);
 
     // Send updated state
     Joystick.sendState();
   }
-  // If NO new press => we do nothing here, so last pressed states remain
-  // latched in the Joystick library’s internal state.
+  // If no new press & no hopper change => do nothing here
 
   // ----------------------------------------------------------------
-  // 5) Light the NeoPixels
+  // 6) Light the NeoPixels
   // ----------------------------------------------------------------
-  // We still want to update LED visuals every loop
-  // so the user can see what's selected.
-
-  // 5a) Master side
+  // Master side
   for (int i = 0; i < NUM_MASTER_BUTTONS; i++) {
-    ButtonType btype     = masterButtonType[i];
-    bool isLocationMatch = (btype == LOCATION && i == selectedLocationMaster);
-    bool isHeightMatch   = (btype == HEIGHT   && i == selectedHeightMaster);
-    bool isSelected      = (isLocationMatch || isHeightMatch);
-
+    ButtonType btype = masterButtonType[i];
+    bool isSelected  = false;
+    if (btype == LOCATION && i == selectedLocationMaster) {
+      isSelected = true;
+    }
+    else if (btype == HEIGHT && i == selectedHeightMaster) {
+      isSelected = true;
+    }
     setButtonColor(masterLedIndex[i], btype, isSelected);
   }
 
-  // 5b) Slave side
+  // Slave side
   for (int i = 0; i < NUM_SLAVE_BUTTONS; i++) {
-    ButtonType btype     = slaveButtonType[i];
-    bool isLocationMatch = (btype == LOCATION && i == selectedLocationSlave);
-    bool isHeightMatch   = (btype == HEIGHT   && i == selectedHeightSlave);
-    bool isHopper        = (btype == HOPPER);
-
-    bool isSelected = (isLocationMatch || isHeightMatch || (isHopper && hopperSelected));
-
+    ButtonType btype = slaveButtonType[i];
+    bool isSelected  = false;
+    if (btype == LOCATION && i == selectedLocationSlave) {
+      isSelected = true;
+    }
+    else if (btype == HEIGHT && i == selectedHeightSlave) {
+      isSelected = true;
+    }
+    else if (btype == HOPPER) {
+      // Switch isSelected if on
+      isSelected = hopperSelected;
+    }
     setButtonColor(slaveLedIndex[i], btype, isSelected);
   }
-
   masterStrip.show();
 
 #ifdef DEBUG_ENABLED
   if (newPressDetected) {
-    Serial.print("NEW PRESS DETECTED --> Rewrote Joystick states.\n");
+    Serial.print("NEW EVENT => Joystick state updated.\n");
   }
   Serial.print("LocM=");
   Serial.print(selectedLocationMaster);
